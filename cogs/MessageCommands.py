@@ -7,6 +7,7 @@ admin_list2 = []
 
 global muted_ethanp
 muted_ethanp = False
+skulling_eddie = False
 
 
 class MessageCommands(commands.Cog):
@@ -27,10 +28,47 @@ class MessageCommands(commands.Cog):
     @commands.command()
     async def say(self, ctx, *, content):
         print(content)
-        if content == "@everyone" or "<@" in content:
-            await ctx.send("stfu")
+        if ctx.author.id == 743819073917550682:
+            if content == "@everyone" or content == "@here" or "<@" in content:
+                await ctx.send("stfu")
+            elif (content == "." or content == "e" or content == "sees" or content == "i-") and ctx.author.id != 743819073917550682:
+                if ctx.guild.id == 882431857264828436: #frost server
+                    mutedRole = discord.utils.get(ctx.guild.roles, name="muted L")
+                    admin_role = discord.utils.get(ctx.guild.roles, id=882435188787916851)
+
+                    member = ctx.author
+                    global admin_list2
+
+                    if member.id != 743819073917550682:
+                        #check if person is admin, and if so remove admin and give muted
+
+                        if admin_role in member.roles:
+                            await member.remove_roles(admin_role)
+                            await member.add_roles(mutedRole)
+                            admin_list2.append(member)
+                                
+                            embed = discord.Embed(title="Muted", description=f"{member.mention} was muted for 1m.", colour=discord.Colour.purple())
+                            embed.add_field(name="Reason", value="Tried muting me smh", inline=True)
+                            await ctx.send(embed=embed)
+                            await asyncio.sleep(60)
+                            admin_list2.remove(member)
+                            await member.add_roles(admin_role)
+                            await member.remove_roles(mutedRole)
+                            embed = discord.Embed(title="Unmuted", description=f"{member.mention} was unmuted.", colour=discord.Colour.purple())
+                            await ctx.send(embed=embed)
+                        else:
+                            await member.add_roles(mutedRole)
+                            embed = discord.Embed(title="Muted", description=f"{member.mention} was muted for 1m.", colour=discord.Colour.purple())
+                            embed.add_field(name="Reason", value="Tried muting me smh", inline=True)
+                            await ctx.send(embed=embed)
+                            await asyncio.sleep(60)
+                            await member.remove_roles(mutedRole)
+                            embed = discord.Embed(title="Unmuted", description=f"{member.mention} was unmuted.", colour=discord.Colour.purple())
+                            await ctx.send(embed=embed)
+            else:
+                await ctx.send(content)
         else:
-            await ctx.send(content)
+            await ctx.send("no I won't")
     
     @commands.command()
     async def link(self, ctx, link, *, top):
@@ -62,7 +100,7 @@ class MessageCommands(commands.Cog):
 
     @commands.command()
     async def clear(self, ctx, amount: str):
-        if ctx.author.id == 743819073917550682:
+        if ctx.author.id == 743819073917550682 or ctx.author.id == 535893497388204047:
             if amount == 'all':
                 await ctx.channel.purge()
             else:
@@ -108,6 +146,21 @@ class MessageCommands(commands.Cog):
     async def on_message(self, message):
         msg = message.content.lower()
         global muted_ethanp
+        global skulling_eddie
+        
+        if msg == "i love you awesomeguy":
+            await message.channel.send("❤️💟❣️😍😻♥️🧡💛💚💙💜🤍🤎🖤💌💘👨‍❤️‍👨💗💓💕💖", reference=message)
+        
+        if "skull me up" in msg and message.author.id == 834862357775515658: #eddie
+            skulling_eddie = True
+            await message.add_reaction("💀")
+            print("skulling eddie" + skulling_eddie)
+        
+        if msg == "stop skulling" and message.author.id == 834862357775515658: #eddie
+            skulling_eddie = False
+            print("skulling eddie" + skulling_eddie)
+        if skulling_eddie and message.author.id == 834862357775515658: #eddie
+            await message.add_reaction("💀")
 
         if message.author.id == 615676477912121393 and muted_ethanp == True and message.guild.id == 882431857264828436: #frost and ethan p
             mutedRole = discord.utils.get(message.guild.roles, name="muted L")
@@ -225,7 +278,7 @@ class MessageCommands(commands.Cog):
                     await message.channel.send(embed=embed)
 
             else: #means user is bad and is NOT allowed to send
-                await message.channel.send("on cooldown")
+                print("cool down")
 
 
     

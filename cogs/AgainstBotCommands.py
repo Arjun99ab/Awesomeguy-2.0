@@ -5,11 +5,9 @@ from secrets import randbelow
 from itertools import islice
 from pymongo import MongoClient
 import pymongo
-
-from dotenv import load_dotenv
+import time
 import os
 
-load_dotenv()
 mongo_cluster = os.getenv('mongo_cluster')
 
 cluster = MongoClient(mongo_cluster)
@@ -57,7 +55,7 @@ class AgainstBotCommands(commands.Cog):
             print(number)
             def is_correct(m):
                 print(type(m.content))
-                return m.author == ctx.author and (m.content.isdigit() or m.content == "quit")
+                return m.author == ctx.author and (m.content.isdigit() or m.content == "quit") and m.channel == ctx.channel
             try:
                 msg = await self.bot.wait_for('message', check=is_correct, timeout=30.0)
                 print(msg)
@@ -93,9 +91,9 @@ class AgainstBotCommands(commands.Cog):
                         break
                 else:
                     embed = discord.Embed(title="Incorrect. You have " + str(guess) + " guesses left...", color=discord.Color.red())
+                    embed.add_field(name="Suggestion:", value="Try going **lower**")
                     await ctx.send(embed=embed)
                     #await asyncio.sleep(1)
-                    await ctx.send('Try going **lower**')
                     await asyncio.sleep(0.5)
                     guess -= 1
             elif attempt < number:
@@ -118,9 +116,9 @@ class AgainstBotCommands(commands.Cog):
                         break
                 else:
                     embed = discord.Embed(title="Incorrect. You have " + str(guess) + " guesses left...", color=discord.Color.red())
+                    embed.add_field(name="Suggestion:", value="Try going **higher**")
                     await ctx.send(embed=embed)
                     #await asyncio.sleep(1)
-                    await ctx.send('Try going **higher**')
                     await asyncio.sleep(0.5)
                     guess -=1
             elif attempt == number:
@@ -134,6 +132,79 @@ class AgainstBotCommands(commands.Cog):
     @guess.command()
     async def help(ctx):
         embed=discord.Embed(title="Guessing Game", description="Guess is guessing game." + "\n" + "Using the command '-guess', the bot will give you 3 chances to guess a number 1-100, and you can respond with an integer to guess.\nYou can also respond with 'quit' to quit the game.", color=discord.Color.blue())
+        await ctx.send(embed=embed)
+    
+    
+    @commands.group(invoke_without_command=True)
+    async def rps(self, ctx):
+        if ctx.author == self.bot.user:
+            return
+
+        # temp_id = ctx.author.id
+        global game_in_session
+
+        # msg = ctx.content
+        embed = discord.Embed(title="Rock")
+        await ctx.send(embed=embed)
+        time.sleep(1)
+        embed = discord.Embed(title="Paper")
+        await ctx.send(embed=embed)
+        time.sleep(1)
+        embed = discord.Embed(title="Scissors")
+        await ctx.send(embed=embed)
+        time.sleep(1)
+        embed = discord.Embed(title="SHOOT")
+
+        await ctx.send(embed=embed)
+        
+        def is_correct(m):
+            print(type(m.content))
+            return m.author == ctx.author and m.channel == ctx.channel
+        try:
+            msg = await self.bot.wait_for('message', check=is_correct, timeout=30.0)
+            print(msg)
+            
+        except asyncio.TimeoutError:
+            embed = discord.Embed(title="Time's up", description="You were too slow bruh", color=discord.Color.red())
+            await ctx.send(embed=embed)
+            
+        # 0 = rock, 1 = paper, 2 = scissors
+        
+        moves = ["rock", "paper", "scissors"]
+
+        num =   randint(0, 2)
+
+        embed = discord.Embed(title="You played: " + msg + "\n"
+                                                            "I played: " + moves[num])
+        await ctx.send(embed=embed)
+
+        if not (msg in moves):
+            embed = discord.Embed(title="Please answer with either 'rock', 'paper', or 'scissors'", color=discord.Color.red())
+            await ctx.send(embed=embed)
+        elif moves.index(msg) - 2 == num:
+            embed = discord.Embed(title="I win! EZ", description="You lost 5 exp for losing", color=discord.Color.red())
+            await ctx.send(embed=embed)
+            giveXP(ctx.author.id, -5)
+        elif moves.index(msg) + 2 == num:
+            embed = discord.Embed(title="You win! GG", description="You received 10 exp for winning!", color=discord.Color.green())
+            await ctx.send(embed=embed)
+            giveXP(ctx.author.id, 10)
+        elif moves.index(msg) - 1 == num:
+            embed = discord.Embed(title="You win! GG", description="You received 10 exp for winning!", color=discord.Color.green())
+            await ctx.send(embed=embed)
+            giveXP(ctx.id, 10)
+        elif moves.index(msg) == num:
+            embed = discord.Embed(title="Draw -_-", description="You don't get xp for tying", color=discord.Color.blue())
+            await ctx.send(embed=embed)
+        elif moves.index(msg) + 1 == num:
+            embed = discord.Embed(title="I win! EZ", description="You lost 5 exp for losing", color=discord.Color.red())
+            await ctx.send(embed=embed)
+            giveXP(ctx.author.id, -5)
+    
+    @rps.command()
+    async def help(self, ctx):
+        embed=discord.Embed(title="Rock Paper Scissors", description="RPS stands for Rock Paper Scissors, a commonly known game.", color=discord.Color.blue())
+        embed.add_field(name="How to play", value="Use the command **'-rps'** to start a game against the bot. Once it shouts 'SHOOT' type either **rock, paper, or scissors.**\nThis was the first game project which is why it's lame good day")
         await ctx.send(embed=embed)
 
 

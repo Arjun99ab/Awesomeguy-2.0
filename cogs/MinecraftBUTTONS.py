@@ -340,6 +340,8 @@ class Minecraft(commands.Cog):
 
     @commands.group(invoke_without_command=True, aliases=['mc'])
     async def minecraft(self, ctx, character=":sunglasses:"):
+        if character == "help":
+            return
         player = character
         blocks = ":green_square:"
         
@@ -435,22 +437,25 @@ class Minecraft(commands.Cog):
                     selection = str(res2.component.label)
 
                     if selection == "🔁":
-                        #embed.add_field(name="Generating new seed", value="**Tip:** Use the map to see where you are!", inline=True)
-                        #await printed_pause_menu.edit(embed=embed)
-                        #time.sleep(3)
+                                            
                         rows, cols = (14, 14)
                         arr = [[blocks]*rows for _ in range(cols)]
                         field = fixfield(randomgenfield(arr))
+                        #print(field)
                         x, y = (randint(2, 11), randint(2, 11))
                         field[x][y] = player
+                        await printed_field.delete()
                         await printed_pause_menu.delete()
-                        #await printed_field.edit(content=boardfield(field, x, y))
-                        await res.respond(content=boardfield(field, x, y), type=7, components=minecraft_keys)
+                        printed_field = await ctx.send(components=minecraft_keys, content=boardfield(field, x, y))
                         initial_time = time.perf_counter()
                         print(initial_time)
                         mapview = False
+                        start_field = copy.deepcopy(field)
+                        list_moves = []
+                        list_moves.append(start_field)
                         continue
                     elif selection == "🚫":
+                        await printed_pause_menu.delete()
                         embed=discord.Embed(title="Exiting", description="Use '-minecraft' to play again!", color=discord.Color.dark_magenta())
                         await ctx.send(embed=embed)
                         break
@@ -529,13 +534,15 @@ class Minecraft(commands.Cog):
                         
                         if tree_count == 0:
                             final_time = str(round(time.perf_counter()-initial_time, 3))
+                            embed=discord.Embed(title="You won with a time of " + final_time + "!", color=discord.Color.blue())
                             if str(ctx.author.id) not in open("minecraftlb").read():
                                 f = open("minecraftlb", 'a')
                                 writeFile(f, str(ctx.author.id))
-                                writeFile(f, "0")
+                                writeFile(f, final_time)
                                 f.close()
-                            embed=discord.Embed(title="You won with a time of " + final_time + "!", color=discord.Color.blue())
-                            if float(final_time) < float(readRecord("minecraftlb", ctx.author.id)):
+                                await ctx.send(embed=embed)
+                            
+                            elif float(final_time) < float(readRecord("minecraftlb", ctx.author.id)):
                                 print(float(readRecord("minecraftlb", ctx.author.id)))
                                 embed.add_field(name="You also beat your previous record!", value="This time was better than your previous record by " + str(round(float(readRecord("minecraftlb", ctx.author.id)) - float(final_time), 3)) + " seconds!\nI have also saved this game. Use '-minecraft replays' to view it..", inline=True)
                                 writeTime(ctx.author.id, final_time)
@@ -1321,6 +1328,14 @@ class Minecraft(commands.Cog):
         print(points_descending[2])
         print(lb_dict[points_descending[2]])
         embed=discord.Embed(title="Leaderboard", description="<@" + str(lb_dict[points_descending[0]]) + ">: " + str(points_descending[0]) + "\n<@" + str(lb_dict[points_descending[1]]) + ">: " + str(points_descending[1]) + "\n<@" + str(lb_dict[points_descending[2]]) + ">: " + str(points_descending[2]), color=discord.Color.blue())
+        await ctx.send(embed=embed)
+        
+    @minecraft.command()
+    async def help(self, ctx):
+        embed = discord.Embed(title="Minecraft", description="This spinoff of minecraft is a speedrun game where the goal is to chop all the the trees in the map down.", color=discord.Color.blue())
+        embed.add_field(name="How to play", value="Use '-mc {emoji} or '-minecraft {emoji}' to start a game with your character as that emoji (defaults to ':sunglasses:').\nUse the arrows to navigate the player, the axe to chop a tree in a 1 block radius, the map to view where you are and the trees are, and lastly the pause button to exit the game or generate a new seed quickly.")
+        embed.add_field(name="Leaderboard", value="Use '-mc lb' to view the fastest times, and '-mc record' to view your own fastest.")
+        embed.add_field(name="Replays", value="To see a stored replay, use '-mc replays' and navigate through the menu to select one to view.")
         await ctx.send(embed=embed)
 
     

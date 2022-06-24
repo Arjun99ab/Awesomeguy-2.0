@@ -29,6 +29,9 @@ class FunCommands(commands.Cog):
 
     @commands.command()
     async def random(self, ctx, min, max):
+        if min == "" or max == "":
+            await ctx.send(discord.Embed(title="Format: -random {num}, {num}"), color=discord.Color.red())
+            return
         # message = await ctx.send()
         minRe = min.replace(',', '')
         print("String after removal of ',': " + minRe)
@@ -54,7 +57,7 @@ class FunCommands(commands.Cog):
     @commands.command()
     async def roll(self, ctx):
         die = randint(1, 6)
-        embed = discord.Embed(title="It rolled a " + die, color=discord.Color.random())
+        embed = discord.Embed(title="The die rolled a {die}", color=discord.Color.random())
         await ctx.send(embed=embed)
 
     @commands.command()
@@ -191,9 +194,7 @@ class FunCommands(commands.Cog):
                 try:
                     await interaction.respond(content="", type=7, components=[], embed=embed)
                 except HTTPException:
-                    await ctx.send("bro this guys definition was so bad discord cant even handle it")
-                    await ctx.send("test")
-                    await ctx.send()
+                    await ctx.send("definition too long for discord lol")
 
             except TimeoutError:
                 print("timed out")

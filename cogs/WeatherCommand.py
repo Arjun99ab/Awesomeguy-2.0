@@ -8,13 +8,8 @@ import requests
 import json
 import os
 
-from dotenv import load_dotenv
-import os
 
-load_dotenv()
-weather_api = os.getenv('weather_api')
-
-api_key = weather_api
+api_key = '55117ecc56c5742a942621ec406d8e5b'
 color = 0xFF6500
 key_features = {
     'temp' : 'Current Temperature',

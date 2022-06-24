@@ -17,7 +17,8 @@ from itertools import islice
 from discord_components import *
 from discord_components import DiscordComponents, Button, Select, SelectOption
 import asyncio
-from discord_slash import SlashCommand
+from discord_slash import SlashCommand, SlashContext
+from discord_slash.utils.manage_commands import create_choice, create_option
 from discord.ext.commands import BucketType
 from asyncdagpi import Client, ImageFeatures
 from discord.utils import get
@@ -26,14 +27,20 @@ from kasa import SmartPlug, SmartBulb
 import webbrowser
 import sys
 import pymongo
+from copy import deepcopy
 from pymongo import MongoClient
 import copy
 import io
+import aiohttp
+import discord
+import datetime
+import warnings
+from discord.ext import commands
 
 
 plug = SmartPlug("192.168.1.214")
 bulb = SmartBulb("192.168.1.217")
-#
+
 load_dotenv()
 awesomeguy_token = os.getenv('awesomeguy_token')
 mongo_cluster = os.getenv('mongo_cluster')
@@ -49,6 +56,7 @@ intents.presences = True
 bot=commands.AutoShardedBot(command_prefix='-', intents=intents)
 bot.remove_command('help')
 slash = SlashCommand(bot, sync_commands=True)
+bot.session = aiohttp.ClientSession()
 
 cluster = MongoClient(mongo_cluster)
 db = cluster["AwesomeguyTwoPointO"]
@@ -150,27 +158,64 @@ async def on_member_join(member):
 
 @bot.command()
 @commands.has_permissions(manage_roles=True)
-async def verify(ctx, member_name):
-    if ctx.guild.id == 882431857264828436:
-        try:
-            name_split = member_name.split("#")
-            member = discord.utils.get(ctx.guild.members, name=name_split[0], discriminator=name_split[1])
-            unverified_role = discord.utils.get(ctx.guild.roles, name="unverified boi")
-            verified_role = discord.utils.get(ctx.guild.roles, name="verified")
-            if unverified_role in member.roles:
-                await member.remove_roles(unverified_role)
-                await member.add_roles(verified_role)
-                embed=discord.Embed(title="You have been successfully verified!", color=discord.Color.green())
-                await bot.get_user(member.id).send(embed=embed)
-                embed=discord.Embed(title=f"{member_name} has been successfully verified!", color=discord.Color.green())
+async def verify(ctx, member: discord.Member = None):
+    if ctx.guild.id == 939323947906920509:
+        verified_role = discord.utils.get(ctx.guild.roles, name="Blair")
+        if member is not None:
+            try:
+                if verified_role not in member.roles:
+                    await member.add_roles(verified_role)
+                    embed=discord.Embed(title=f"You have been successfully verified in {member.guild.name}!", color=discord.Color.green())
+                    await bot.get_user(member.id).send(embed=embed)
+                    embed=discord.Embed(title=f"{member.display_name} has been successfully verified!", color=discord.Color.green())
+                    await ctx.send(embed=embed)
+                else:
+                    embed=discord.Embed(title=f"{member.display_name} is already verified.", color=discord.Color.purple())
+                    await ctx.send(embed=embed)
+            except:
+                embed=discord.Embed(title="Format: '-verify @Person'", color=discord.Color.red())
                 await ctx.send(embed=embed)
-            else:
-                embed=discord.Embed(title=f"{member_name} is already verified.", color=discord.Color.purple())
-                await ctx.send(embed=embed)
-
-        except:
-            embed=discord.Embed(title="Format: -verify Name#Discriminator", color=discord.Color.red())
+        else:
+            embed=discord.Embed(title="Format: '-verify @Person'", color=discord.Color.red())
             await ctx.send(embed=embed)
+    if ctx.guild.id == 882431857264828436:
+        unverified_role = discord.utils.get(ctx.guild.roles, name="unverified boi")
+        verified_role = discord.utils.get(ctx.guild.roles, name="verified")
+        if member != None:
+            try:
+                if unverified_role in member.roles:
+                    await member.remove_roles(unverified_role)
+                    await member.add_roles(verified_role)
+                    embed=discord.Embed(title=f"You have been successfully verified in {member.guild.name}!", color=discord.Color.green())
+                    await bot.get_user(member.id).send(embed=embed)
+                    embed=discord.Embed(title=f"{member.display_name} has been successfully verified!", color=discord.Color.green())
+                    await ctx.send(embed=embed)
+                else:
+                    embed=discord.Embed(title=f"{member.display_name} is already verified.", color=discord.Color.purple())
+                    await ctx.send(embed=embed)
+
+            except:
+                embed=discord.Embed(title="Format: '-verify @Person'", color=discord.Color.red())
+                await ctx.send(embed=embed)
+        elif member == None:
+            try:
+                msg = ctx.message.reference
+            except AttributeError:
+                await ctx.send("Format: '-verify @Person'")
+                return
+            
+            member = msg.author
+            print(member)
+            if unverified_role in member.roles:
+                    await member.remove_roles(unverified_role)
+                    await member.add_roles(verified_role)
+                    embed=discord.Embed(title="You have been successfully verified!", color=discord.Color.green())
+                    await bot.get_user(member.id).send(embed=embed)
+                    embed=discord.Embed(title=f"{member.display_name} has been successfully verified!", color=discord.Color.green())
+                    await ctx.send(embed=embed)
+            else:
+                embed=discord.Embed(title=f"{member.display_name} is already verified.", color=discord.Color.purple())
+                await ctx.send(embed=embed)
 
 @verify.error
 async def verify_error(ctx, error):
@@ -185,12 +230,122 @@ async def on_member_leave(member):
 
 
 
+async def timeout_user(*, user_id: int, guild_id: int, until, removing: False):
+    json1 = {'communication_disabled_until'}
+    print(json1)
+    headers = {"Authorization": f"Bot {bot.http.token}"}
+    url = f"https://discord.com/api/v9/guilds/{guild_id}/members/{user_id}"
+    if not removing:
+        timeout = (datetime.datetime.utcnow() + datetime.timedelta(minutes=until)).isoformat()
+        json = {'communication_disabled_until': timeout}
+    else:
+        json = {'communication_disabled_until': None}
+    print(json)
+    async with bot.session.patch(url, json=json, headers=headers) as session:
+        if session.status in range(200, 299):
+            return True
+        return False
+
+global admin_list2
+admin_list2 = []
+
+@bot.command(aliases=['tm'])
+async def timeout(ctx, member: discord.Member, duration = None):
+    if ctx.message.author.guild_permissions.administrator:
+        unit = duration[-1]
+        print(unit)
+        amount = int(duration[:-1])
+        print(amount)
+        
+        if unit == "m":
+            wait = 1 * amount
+        elif unit == "h":
+            wait = 60 * amount
+        elif unit == "d":
+            wait = 1440 * amount
+        if ctx.guild.id == 882431857264828436: #FROST SERVER
+            global admin_list2
+            admin_role = discord.utils.get(ctx.guild.roles, id=882435188787916851)
+            owner_role = discord.utils.get(ctx.guild.roles, id=883170021407350844)
+            
+            if owner_role in ctx.author.roles and admin_role in member.roles:
+                await member.remove_roles(admin_role)
+                admin_list2.append(member)
+                handshake = await timeout_user(user_id=member.id, guild_id=ctx.guild.id, until=wait, removing=False)
+
+                if handshake:
+                    embed = discord.Embed(title="Timeout", description=f"{member.mention} is now in timeout for {amount}{unit}.", colour=discord.Colour.purple())
+                    await ctx.send(embed=embed)
+                    await asyncio.sleep()
+                else:
+                    embed = discord.Embed(title="Error", description="Discord api is either exploding or my bot is.", color=discord.Color.red())
+                    await ctx.send(embed=embed)
+            elif admin_role in ctx.author.roles and admin_role not in member.roles:
+                handshake = await timeout_user(user_id=member.id, guild_id=ctx.guild.id, until=wait, removing=False)
+
+                if handshake:
+                    embed = discord.Embed(title="Timeout", description=f"{member.mention} is now in timeout for {amount}{unit}.", colour=discord.Colour.purple())
+                    await ctx.send(embed=embed)
+                else:
+                    embed = discord.Embed(title="Error", description="Discord api is either exploding or my bot is.", color=discord.Color.red())
+                    await ctx.send(embed=embed)
+            else:
+                embed = discord.Embed(title="Error", description="You don't have permissions to timeout people.", color=discord.Color.red())
+                await ctx.send(embed=embed)
+            
+        
+        else:
+            handshake = await timeout_user(user_id=member.id, guild_id=ctx.guild.id, until=wait, removing=False)
+
+            if handshake:
+                embed = discord.Embed(title="Timeout", description=f"{member.mention} is now in timeout for {amount}{unit}.", colour=discord.Colour.purple())
+                await ctx.send(embed=embed)
+            else:
+                embed = discord.Embed(title="Error", description=f"Discord api is either exploding or my bot is.", color=discord.Color.red())
+                await ctx.send(embed=embed)
+
+@bot.command(aliases=['untm'])
+async def untimeout(ctx, member: discord.Member):
+    if ctx.message.author.guild_permissions.administrator:
+        if ctx.guild.id == 882431857264828436: #FROST SERVER
+            if member in admin_list2:
+                handshake = await timeout_user(user_id=member.id, guild_id=ctx.guild.id, until=0, removing=True)
+                if handshake:
+                    embed = discord.Embed(title="Timeout", description=f"{member.mention} was removed from their timeout.", colour=discord.Colour.purple())
+                    await ctx.send(embed=embed)
+                    await member.add_roles(discord.utils.get(ctx.guild.roles, id=882435188787916851))
+                    admin_list2.remove(member)
+                else:
+                    embed = discord.Embed(title="Error", description=f"Discord api is either exploding or my bot is.", color=discord.Color.red())
+                    await ctx.send(embed=embed)
+            else:
+                handshake = await timeout_user(user_id=member.id, guild_id=ctx.guild.id, until=0, removing=True)
+                if handshake:
+                    embed = discord.Embed(title="Timeout", description=f"{member.mention} was removed from their timeout.", colour=discord.Colour.purple())
+                    await ctx.send(embed=embed)
+                else:
+                    embed = discord.Embed(title="Error", description=f"Discord api is either exploding or my bot is.", color=discord.Color.red())
+                    await ctx.send(embed=embed)
+        else:
+            handshake = await timeout_user(user_id=member.id, guild_id=ctx.guild.id, until=0, removing=True)
+            if handshake:
+                embed = discord.Embed(title="Timeout", description=f"{member.mention} was removed from their timeout.", colour=discord.Colour.purple())
+                await ctx.send(embed=embed)
+            else:
+                embed = discord.Embed(title="Error", description=f"Discord api is either exploding or my bot is.", color=discord.Color.red())
+                await ctx.send(embed=embed)
+
 ######################################################################
 #                       Bot Testing Commands                         #
 ######################################################################
 @bot.command(name='ping', help='This command returns the latency')
 async def ping(ctx):
     await ctx.send(f'**Pong!** Latency: {round(bot.latency * 1000)}ms')
+
+@slash.slash(name="dapmeup", description="daps you up!!", guild_ids=[917917980938096670, 882431857264828436, 809070827076976644, 939323947906920509])
+async def _dap(ctx: SlashContext):
+    embed = discord.Embed(title="ON GODDD DAP ME UP THIS INSTANT", description=f"*daps* {ctx.author.mention}", color=discord.Color.purple())
+    await ctx.send(embed=embed)
 
 @bot.command()
 async def testdm(ctx):
@@ -209,6 +364,16 @@ async def die(ctx):
         sys.exit()
     else:
         await ctx.send("shut up jason")
+
+@bot.command()
+async def restart(ctx):
+    if ctx.author.id == 743819073917550682:
+        await ctx.send("restarting")
+        exec(open("discordbotPi.py").read())
+        time.sleep(5)
+        sys.exit()
+    else:
+        await ctx.send("no u")
 
 
 
@@ -364,11 +529,11 @@ async def help(ctx):
 
 @bot.command()
 async def help(ctx):
-    embed = discord.Embed(title="Bot Commands", description="Use the '-' prefix before every command.", color=discord.Color.blue())
-    embed.add_field(name="Rank Commands", value="-rank, -rank @User, -lb", inline=True)
-    embed.add_field(name="Fun Commands", value="-8ball, -inspire, -say, -dm, -random, -flip", inline=True)
-    embed.add_field(name="Game Commands", value="-tictactoe, -rps, -guess, -duel" + "\n" + "**Look below to find more about these**", inline=True)
-    embed.add_field(name="Help Commands", value="-tictactoe help, -rps help, -guess help, -duel help, -music help", inline=True)
+    embed = discord.Embed(title="Bot Commands", description="Use the '-' prefix before every command.\nCheck how laggy the bot is with '-ping'!", color=discord.Color.blue())
+    embed.add_field(name="Rank Commands", value="-rank, -rank @User, -lb, -lb global", inline=False)
+    embed.add_field(name="Fun Commands", value="-inspire, -dm @User, -random, -flip, -roll, -urban {word}, -wanted @User", inline=False)
+    embed.add_field(name="Game Commands", value="-minecraft, -tictactoe, -rps, -guess, -duel" + "\n" + "**Look below to find more about these**", inline=False)
+    embed.add_field(name="Help Commands", value="-minecraft help, -tictactoe help, -rps help, -guess help, -duel help, -roles help", inline=True)
     await ctx.send(embed=embed)
 
 @bot.command()
@@ -589,54 +754,6 @@ async def on_message(message):
             await bot.get_user(753249383230865469).send(embed=embed)
 
 
-    ######################################################################
-    #                       Rock Paper Scissors                          #
-    ######################################################################
-
-    global game_in_session
-    if game_in_session and msg != "-rps":
-
-        moves = ["rock", "paper", "scissors"]
-
-        num =   randint(0, 2)
-
-        embed = discord.Embed(title="You played: " + msg + "\n"
-                                                           "I played: " + moves[num])
-        await message.channel.send(embed=embed)
-
-        if not (msg in moves):
-            embed = discord.Embed(title="Please answer with either 'rock', 'paper', or 'scissors'")
-            await message.channel.send(embed=embed)
-        elif moves.index(msg) - 2 == num:
-            embed = discord.Embed(title="I win! EZ")
-            await message.channel.send(embed=embed)
-            giveXP(message.author.id, -5)
-            embed = discord.Embed(title="You lost 5 exp for losing", color=discord.Color.red())
-            await message.channel.send(embed=embed)
-            await message.channel.send("You lost 5 exp for losing")
-        elif moves.index(msg) + 2 == num:
-            embed = discord.Embed(title="You win! GG")
-            await message.channel.send(embed=embed)
-            giveXP(message.author.id, 10)
-            embed = discord.Embed(title="You received 10 exp for winning!", color=discord.Color.green())
-            await message.channel.send(embed=embed)
-        elif moves.index(msg) - 1 == num:
-            embed = discord.Embed(title="You win! GG")
-            await message.channel.send(embed=embed)
-            giveXP(message.author.id, 10)
-            embed = discord.Embed(title="You received 10 exp for winning!", color=discord.Color.green())
-            await message.channel.send(embed=embed)
-        elif moves.index(msg) == num:
-            embed = discord.Embed(title="Draw -_-")
-            await message.channel.send(embed=embed)
-        elif moves.index(msg) + 1 == num:
-            embed = discord.Embed(title="I win! EZ")
-            await message.channel.send(embed=embed)
-            giveXP(message.author.id, -5)
-            embed = discord.Embed(title="You lost 5 exp for losing", color=discord.Color.red())
-            await message.channel.send(embed=embed)
-
-        game_in_session = False
 
     ######################################################################
     #                       Word Responses                               #
@@ -653,13 +770,15 @@ async def on_message(message):
         print(question)
         question.append(' ')
         print(question)
+        await ctx.send("...")
+        """
         if question[1] == ' ':
             embed = discord.Embed(title="Say your question lol", description="(e.g. -8ball Am I trash?)", color=discord.Color.red())
             await message.channel.send(embed=embed)
         elif question[1] != ' ':
             print(("aaa"))
             embed = discord.Embed(title=(secrets.choice(list1)), color=discord.Color.random())
-            await message.channel.send(embed=embed)
+            await message.channel.send(embed=embed)"""
 
     global deleteTrue
     if "-delete_trigger" in msg:
@@ -710,238 +829,12 @@ def readRank(file, min, max):
 
 
 
-
-
-
-
-def giveWeapon(id, weapon):
-    convertedId = str(id)
-    phrase = convertedId
-    line_number = "Phrase not found"
-    f = open("equipInfo", "r")
-
-    for number, line in enumerate(f):
-        if phrase in line:
-            line_number = number
-            int(line_number)
-            print(type(line_number))
-            break
-    f.close()
-    f = open("equipInfo", "r")
-    list_of_lines = f.readlines()
-    weapon = weapon + "\n"
-    list_of_lines[line_number + 1] = weapon
-    print(type(list_of_lines))
-    # list_of_lines.append("\n")
-    print(list_of_lines)
-
-    f = open("equipInfo", "w")
-    f.writelines(list_of_lines)
-    f.close()
-
-
-def giveWeapon2(id, weapon):
-    convertedId = str(id)
-    phrase = convertedId
-    line_number = "Phrase not found"
-    f = open("equipInfo", "r")
-
-    for number, line in enumerate(f):
-        if phrase in line:
-            line_number = number
-            int(line_number)
-            print(type(line_number))
-            break
-    f.close()
-    f = open("equipInfo", "r")
-    list_of_lines = f.readlines()
-    weapon = weapon + "\n"
-    list_of_lines[line_number + 2] = weapon
-    print(type(list_of_lines))
-    # list_of_lines.append("\n")
-    print(list_of_lines)
-
-    f = open("equipInfo", "w")
-    f.writelines(list_of_lines)
-    f.close()
-
-
-def giveHeal(id, healInput):
-    convertedId = str(id)
-    phrase = convertedId
-    line_number = "Phrase not found"
-    f = open("equipInfo", "r")
-
-    for number, line in enumerate(f):
-        if phrase in line:
-            line_number = number
-            int(line_number)
-            print(type(line_number))
-            break
-    f.close()
-    f = open("equipInfo", "r")
-    list_of_lines = f.readlines()
-    original_xp = int(list_of_lines[line_number + 3])
-    healInt = healInput
-    xp = str(healInt + original_xp) + "\n"
-    list_of_lines[line_number + 3] = xp
-    print(type(list_of_lines))
-    # list_of_lines.append("\n")
-    print(list_of_lines)
-
-    f = open("equipInfo", "w")
-    f.writelines(list_of_lines)
-    f.close()
-
-
-@bot.command()
-async def buy(ctx, *, weapon):
-    global line
-    shopStuff = ["Nerf Gun", "Log", "Healing Potion", "Bazooka", "Fork"]
-    shopStuffLower = ["nerf gun", "log", "healing potion", "bazooka", "fork"]
-    shopStuffCost = [100, 60, 75, 200, 75]
-    convertedId = str(ctx.author.id)
-    if weapon in shopStuffLower:
-        itemIndex = shopStuffLower.index(weapon)
-        print(itemIndex)
-        if convertedId in open("rankinfo").read():
-            print("success")
-            # print(convertedId + "aaa")
-            phrase = convertedId
-            line_number = "Phrase not found"
-            f = open("rankinfo", "r")
-
-            for number, line in enumerate(f):
-                if phrase in line:
-                    line_number = number
-                    break
-            f.close()
-
-            print(line_number)  # "+1, its the user id"
-            with open("rankinfo", 'r') as f:
-                for line in islice(f, line_number + 1, line_number + 2):
-                    print("User xp: " + line)
-            f.close()
-        elif convertedId not in open("rankinfo").read():
-            embed = discord.Embed(title="Please use '-rank' to set up your XP profile before using this.",
-                                  color=discord.Color.purple())
-            await ctx.send(embed=embed)
-        # print(line)
-        global userXP
-        userXP = int(line)
-
-        print(userXP)
-        if shopStuffCost[itemIndex] <= userXP:  # current xp
-            giveXP(ctx.author.id, -shopStuffCost[itemIndex])
-            if itemIndex == 2:
-                giveHeal(ctx.author.id, 1)
-                embed = discord.Embed(
-                    title="You spent " + str(shopStuffCost[itemIndex]) + "XP on a " + shopStuff[itemIndex] + "!",
-                    color=discord.Color.blue())
-                await ctx.send(embed=embed)
-            else:
-                embed = discord.Embed(
-                    title="Respond with where you want this weapon to go to. 1 for primary, 2 for secondary.",
-                    color=discord.Color.blue())
-                await ctx.send(embed=embed)
-
-                def is_correct(m):
-                    return m.author == ctx.author and m.content.isdigit()
-
-                msg = await bot.wait_for('message', check=is_correct, timeout=30)
-                attempt = int(msg.content)
-
-                if attempt == 1:
-                    giveWeapon(ctx.author.id, weapon)
-                    embed = discord.Embed(
-                        title="You spent " + str(shopStuffCost[itemIndex]) + "XP on a " + shopStuff[itemIndex] + "!",
-                        color=discord.Color.blue())
-                    await ctx.send(embed=embed)
-                    # await ctx.send("Gave '" + weapon + "'!")
-                elif attempt == 2:
-                    giveWeapon2(ctx.author.id, weapon)
-                    embed = discord.Embed(
-                        title="You spent " + str(shopStuffCost[itemIndex]) + "XP on a " + shopStuff[itemIndex] + "!",
-                        color=discord.Color.blue())
-                    await ctx.send(embed=embed)
-        else:
-            embed = discord.Embed(title="You don't have enough xp to purchase this", color=discord.Color.red())
-            await ctx.send(embed=embed)
-
-    else:
-        embed = discord.Embed(title="That's not a purchasable weapon", color=discord.Color.red())
-        await ctx.send(embed=embed)
-
-@buy.error
-async def buy_error(ctx, error):
-    print(error)
-    if isinstance(error, commands.MissingRequiredArgument):
-        embed = discord.Embed(
-            title="You must specify an item to buy. You can find the list of items to buy using '-shop'.",
-            color=discord.Color.purple())
-        await ctx.send(embed=embed)
-    if isinstance(error, commands.CommandInvokeError):
-        embed = discord.Embed(title="Please use '-shop' to set up your inventory and see available items to purchase.",
-                              color=discord.Color.purple())
-        await ctx.send(embed=embed)
-
-
-
-
-        
-
-
-
-
-
-
-
-
-@bot.group(invoke_without_command=True)
-async def rps(ctx):
-    if ctx.author == bot.user:
-        return
-
-    # temp_id = ctx.author.id
-    global game_in_session
-
-    # msg = ctx.content
-    embed = discord.Embed(title="Rock")
-    await ctx.send(embed=embed)
-    time.sleep(1)
-    embed = discord.Embed(title="Paper")
-    await ctx.send(embed=embed)
-    time.sleep(1)
-    embed = discord.Embed(title="Scissors")
-    await ctx.send(embed=embed)
-    time.sleep(1)
-    embed = discord.Embed(title="SHOOT")
-
-    await ctx.send(embed=embed)
-
-    # 0 = rock, 1 = paper, 2 = scissors
-
-    game_in_session = True
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 player1 = ""
 player2 = ""
 turn = ""
 gameOver = True
 
-board = []
+
 
 winningConditions = [
     [0, 1, 2],
@@ -953,6 +846,35 @@ winningConditions = [
     [0, 4, 8],
     [2, 4, 6]
 ]
+
+tictactoe_board = [
+    [
+        Button(style=ButtonStyle.grey, label=' ', id=1),
+        Button(style=ButtonStyle.grey, label=' ', id=2),
+        Button(style=ButtonStyle.grey, label=' ', id=3),
+    ],
+    [
+        Button(style=ButtonStyle.grey, label=' ', id=4),
+        Button(style=ButtonStyle.grey, label=' ', id=5),
+        Button(style=ButtonStyle.grey, label=' ', id=6), 
+        
+    ],
+    [
+        Button(style=ButtonStyle.grey, label=' ', id=7),
+        Button(style=ButtonStyle.grey, label=' ', id=8),
+        Button(style=ButtonStyle.grey, label=' ', id=9),
+        #Button(style=ButtonStyle.green, label='⛔', id="quit"), 
+        
+    ],
+]
+
+def checkWinner(board):
+    for cond in winningConditions:
+        check = all(item in board for item in cond)
+        if check is True:
+            return True
+
+
 @bot.group(invoke_without_command=True)
 async def tictactoe(ctx, p2: discord.Member):  # p1: discord.Member,
     global count
@@ -964,27 +886,35 @@ async def tictactoe(ctx, p2: discord.Member):  # p1: discord.Member,
     player1 = ctx.author
     player2 = p2
 
-    if p2.id == ctx.author.id:
-        embed=discord.Embed(title="Bruh", description="You can't play yourself lol", color=discord.Color.red())
-        await ctx.send(embed=embed)
+    # if p2.id == ctx.author.id:
+    #embed=discord.Embed(title="Bruh", description="You can't play yourself lol", color=discord.Color.red())
+    # await ctx.send(embed=embed)
 
-    elif gameOver:
+    if gameOver:
         requested_person = p2
-        embed=discord.Embed(title="TicTacToe Challenge", description=str(player1.mention) + "has challenged " + str(player2.mention) + " to a TicTacToe game!\n They have 15 seconds to accept.\nUse -tictactoe accept to accept the challenge!", color=discord.Color.purple())
-        await ctx.send(embed=embed)
+        embed = discord.Embed(title="TicTacToe Challenge", description=str(player1.mention) + "has challenged " + str(player2.mention) +
+                              " to a TicTacToe game!\n They have 30 seconds to accept.\nUse -tictactoe accept to accept the challenge!", color=discord.Color.purple())
+        starting_msg = await ctx.send(embed=embed)
 
-        await asyncio.sleep(15)
+        await asyncio.sleep(30)
 
         if gameOver:
+            print(gameOver)
+            print("sending expired msg")
             requested_person = None
-            embed = discord.Embed(title="Request Expired",description="TicTacToe request from " + str(player1.mention) + " to " + str(player2.mention) + " has expired.",color=discord.Color.red())
+            embed = discord.Embed(title="Request Expired", description="TicTacToe request from " + str(
+                player1.mention) + " to " + str(player2.mention) + " has expired.", color=discord.Color.red())
             await ctx.send(embed=embed)
         else:
             print("passed")
             pass
     else:
-        embed=discord.Embed(title="You are already in a game", description="If that person is afk just use 'place quit'.", color=discord.Color.red())
+        embed = discord.Embed(title="You are already in a game",
+                              description="If that person is afk just use 'place quit'.", color=discord.Color.red())
         await ctx.send(embed=embed)
+
+
+
 
 @tictactoe.command()
 async def accept(ctx):
@@ -997,247 +927,141 @@ async def accept(ctx):
 
     if ctx.author.id == requested_person.id:
         requested_person = None
-        global board
-        board = [":white_large_square:", ":white_large_square:", ":white_large_square:",
-                 ":white_large_square:", ":white_large_square:", ":white_large_square:",
-                 ":white_large_square:", ":white_large_square:", ":white_large_square:"]
-        global board1
-        board1 = [":one:", ":two:", ":three:",
-                  ":four:", ":five:", ":six:",
-                  ":seven:", ":eight:", ":nine:"]
+        
         turn = ""
+        initial_turn = " "
         gameOver = False
         count = 0
+
+        msg = await ctx.send(components=tictactoe_board, embed=discord.Embed(title="Loading...", color=discord.Color.blurple()))
+        
 
 
         print(player1)
         print(player2)
 
-        embed = discord.Embed(title="Board Layout:", color=discord.Color.blue())
-        await ctx.send(embed=embed)
-        line1 = ""
-        x = 0
-        print("bruh")
-        global arf
-        arf = False
-        while arf == False:
-            if x == 2:
-                print('here2')
-                line1 += board1[x] + "\n"
-                x += 1
-            elif x == 5:
-                line1 += board1[x] + "\n"
-                print("here5")
-                x += 1
-            elif x == 8:
-                line1 += board1[x]
-                await ctx.send(line1)
-                print("here8")
-                arf = True
-            else:
-                line1 += board1[x] + " "
-                print("here+1")
-                x += 1
-
-        line1 = ""
-        x = 0
-        print("bruh")
-        arf = False
-        while arf == False:
-            if x == 2:
-                print('here2')
-                line1 += board[x] + "\n"
-                x += 1
-            elif x == 5:
-                line1 += board[x] + "\n"
-                print("here5")
-                x += 1
-            elif x == 8:
-                line1 += board[x]
-                await ctx.send(line1)
-                print("here8")
-                arf = True
-            else:
-                line1 += board[x] + " "
-                print("here+1")
-                x += 1
-
         # determine who goes first
         num = randint(1, 2)
         if num == 1:
             turn = player1
-            embed = discord.Embed(title="Starting Turn", description="It is <@" + str(player1.id) + ">'s turn.",
+            initial_turn = turn
+            embed = discord.Embed(title="Starting Turn", description="It is <@" + str(player1.id) + ">'s turn.\nClick on a gray tile to place your marker there!",
                                   color=discord.Color.green())
-            await ctx.send(embed=embed)
+            await msg.edit(embed=embed)
+
         elif num == 2:
             turn = player2
-            embed = discord.Embed(title="Starting Turn", description="It is <@" + str(player2.id) + ">'s turn.",
+            initial_turn = turn
+            embed = discord.Embed(title="Starting Turn", description="It is <@" + str(player2.id) + ">'s turn.\nClick on a gray tile to place your marker there!",
                                   color=discord.Color.green())
-            await ctx.send(embed=embed)
+            await msg.edit(embed=embed)
+        
+        ingame_board = deepcopy(tictactoe_board)
+        game_array_p1 = [" ", " ", " ", " ", " ", " ", " ", " ", " "]
+        game_array_p2 = [" ", " ", " ", " ", " ", " ", " ", " ", " "]
+
+
+        while True:
+            gameOver = False
+            try:
+                def check(res):
+                    return turn.id == res.user.id and res.channel == ctx.channel
+
+                res = await bot.wait_for("button_click", check=check, timeout=30)
+                
+                print(res.component.label)
+                print(res.component.id)
+                if res.component.id == "quit":
+                    embed = discord.Embed(title="Force Quit", description="<@" + str(ctx.author.id) + "> has decided to quit.",
+                                color=discord.Color.red())
+                    break
+                if res.component.id.startswith("marked"):
+                    await res.respond(content="That box is already marked. Click an unfilled (gray) box.", ephemeral=True)
+                else:
+                    row = int((int(res.component.id)-1)/3)
+                    column = (int(res.component.id)%3)-1
+
+                    if turn == player1:
+                        ingame_board[row][column] = Button(style=ButtonStyle.blue, label=' ', id=f"marked{res.component.id}")
+                        game_array_p1[int(res.component.id)-1] = int(res.component.id)-1
+                        
+                        if checkWinner(game_array_p1):
+                            embed = discord.Embed(title="Game Finished!", color=discord.Color.blue())
+                            embed.add_field(name="Winner:", value=f"{player1.mention}", inline=True)
+                            embed.add_field(name="Exp earnings/losses:", value=f"{player1.mention} received 30 exp for winning.\n{player2.mention} lost 15 exp for losing.")
+                            await res.respond(embed=embed, type=7, components=ingame_board)
+                            giveXP(player1.id, 30)
+                            giveXP(player2.id, -15)
+                            gameOver = True
+                            break
+                        if(initial_turn == player1):
+                            filled = 0
+                            for box in game_array_p1:
+                                if box != " ":
+                                    filled += 1
+                            if filled == 5:
+                                embed = discord.Embed(title="Game Finished!", color=discord.Color.blue())
+                                embed.add_field(name="Tie", value="No winners", inline=True)
+                                embed.add_field(name="Exp earnings/losses:", value=f"{player1.mention} received 5 exp for tying.\n{player2.mention} received 5 exp for tying.")
+                                await res.respond(embed=embed, type=7, components=ingame_board)
+                                giveXP(player1.id, 5)
+                                giveXP(player2.id, 5)
+                                gameOver = True
+                                break
+
+                    elif turn == player2:
+                        ingame_board[row][column] = Button(style=ButtonStyle.red, label=' ', id=f"marked{res.component.id}")
+                        game_array_p2[int(res.component.id)-1] = int(res.component.id)-1
+                        print(ingame_board)
+                        if checkWinner(game_array_p2):
+                            embed = discord.Embed(title="Game Finished!", color=discord.Color.blue())
+                            embed.add_field(name="Winner:", value=f"{player2.mention}", inline=True)
+                            embed.add_field(name="Exp earnings/losses:", value=f"{player2.mention} received 30 exp for winning.\n{player1.mention} lost 15 exp for losing.")
+                            await res.respond(embed=embed, type=7, components=ingame_board)
+                            giveXP(player2.id, 30)
+                            giveXP(player1.id, -15)
+                            gameOver = True
+                            break
+                        if(initial_turn == player2):
+                            filled = 0
+                            for box in game_array_p2:
+                                if box != " ":
+                                    filled += 1
+                            if filled == 5:
+                                embed = discord.Embed(title="Game Finished!", color=discord.Color.blue())
+                                embed.add_field(name="Tie", value="No winners", inline=True)
+                                embed.add_field(name="Exp earnings/losses:", value=f"{player1.mention} received 5 exp for tying.\n{player2.mention} received 5 exp for tying.")
+                                await res.respond(embed=embed, type=7, components=ingame_board)
+                                giveXP(player1.id, 5)
+                                giveXP(player2.id, 5)
+                                gameOver = True
+                                break
+
+                    if turn == player1:
+                        turn = player2
+                        
+                    elif turn == player2:
+                        turn = player1
+
+                    embed=discord.Embed(title="Turn Change", description=f"It is now {turn.mention}'s turn.")
+                    
+                    await res.respond(embed=embed, type=7, components=ingame_board)
+            except asyncio.TimeoutError:
+                await ctx.send(f"{turn.mention} you took too long. If you're still there, request to play another game of tictactoe.")
+                gameOver = True
+                break
     else:
-        embed=discord.Embed(title="Error", description="No one invited you to a game of TicTacToe.\nUse -tictactoe challenge @User to start a game.", color=discord.Color.red())
+        embed = discord.Embed(
+            title="Error", description="No one invited you to a game of TicTacToe.\nUse -tictactoe challenge @User to start a game.", color=discord.Color.red())
         await ctx.send(embed=embed)
 
-
-@bot.command()
-async def place(ctx, pos2):
-    global turn
-    global player1
-    global player2
-    global board
-    global count
-    global gameOver
-
-    if pos2 == "quit" and not gameOver:
-        gameOver = True
-        embed = discord.Embed(title="Force Quit", description="<@" + str(ctx.author.id) + "> has decided to quit.",
-                              color=discord.Color.red())
-        await ctx.send(embed=embed)
-        embed = discord.Embed(title="Game Finished!", description="Player resigned.",
-                              color=discord.Color.green())
-        await ctx.send(embed=embed)
-    pos = int(pos2)
-    if not gameOver:
-        mark = ""
-        if turn == ctx.author:
-            if turn == player1:
-                mark = ":regional_indicator_x:"
-            elif turn == player2:
-                mark = ":o2:"
-            if player2.id == bot.user.id and turn == player2:
-                board[3 - 1] = mark
-                count += 1
-
-                line1 = ""
-                x = 0
-                print("bruh")
-                global arf
-                arf = False
-                while arf == False:
-                    if x == 2:
-                        print('here2')
-                        line1 += board[x] + "\n"
-                        x += 1
-                    elif x == 5:
-                        line1 += board[x] + "\n"
-                        print("here5")
-                        x += 1
-                    elif x == 8:
-                        line1 += board[x]
-                        await ctx.send(line1)
-                        print("here8")
-                        arf = True
-                    else:
-                        line1 += board[x] + " "
-                        print("here+1")
-                        x += 1
-
-                checkWinner(winningConditions, mark)
-            elif 0 < pos < 10 and board[pos - 1] == ":white_large_square:":
-                board[pos - 1] = mark
-                count += 1
-
-                line1 = ""
-                x = 0
-                print("bruh")
-                #global arf
-                arf = False
-                while arf == False:
-                    if x == 2:
-                        print('here2')
-                        line1 += board[x] + "\n"
-                        x += 1
-                    elif x == 5:
-                        line1 += board[x] + "\n"
-                        print("here5")
-                        x += 1
-                    elif x == 8:
-                        line1 += board[x]
-                        await ctx.send(line1)
-                        print("here8")
-                        arf = True
-                    else:
-                        line1 += board[x] + " "
-                        print("here+1")
-                        x += 1
-
-                checkWinner(winningConditions, mark)
-                print(count)
-                print(mark)
-                print(type(mark))
-                print(player1)
-                if gameOver == True and mark == ":regional_indicator_x:":
-                    print(player1.id)
-                    print(player2.id)
-                    giveXP(player1.id, 30)
-                    giveXP(player2.id, -15)
-                    embed = discord.Embed(title="Exp earnings/losses:", description="<@" + str(
-                        player1.id) + "> was given 30 exp for winning." + "\n" + "<@" + str(
-                        player2.id) + "> lost 15 exp for losing.", color=discord.Color.blue())
-                    await ctx.send(embed=embed)
-                    print("here??? 2.0")
-                elif gameOver == True and mark == ":o2:":
-                    print(player1.id)
-                    print(player2.id)
-
-                    giveXP(player2.id, 20)
-                    giveXP(player1.id, -15)
-                    embed = discord.Embed(title="Exp earnings/losses:", description="<@" + str(
-                        player2.id) + "> was given 20 exp for winning." + "\n" + "<@" + str(
-                        player1.id) + "> lost 15 exp for losing.", color=discord.Color.blue())
-                    await ctx.send(embed=embed)
-                    print("here???")
-
-                elif count >= 9:
-                    gameOver = True
-                    embed=discord.Embed(title="Tie", description="No XP is awarded for tying", color=discord.Color.blue())
-                    await ctx.send(embed=embed)
-
-                # switch turns
-                if turn == player1 and gameOver == False:
-                    embed = discord.Embed(title="Turn change",
-                                          description="It is now <@" + str(player2.id) + ">'s turn.",
-                                          color=discord.Color.green())
-                    await ctx.send(embed=embed)
-                    turn = player2
-                elif turn == player2 and gameOver == False:
-                    embed = discord.Embed(title="Turn change",
-                                          description="It is now <@" + str(player1.id) + ">'s turn.",
-                                          color=discord.Color.green())
-                    await ctx.send(embed=embed)
-                    turn = player1
-            else:
-                embed = discord.Embed(title="Incorrect format",
-                                      description="Put it like this: -place 'number'. Make sure the numbered square isn't filled",
-                                      color=discord.Color.red())
-                await ctx.send(embed=embed)
-        else:
-            embed = discord.Embed(title="No cheating",
-                                  description="It's not your turn bruh",
-                                  color=discord.Color.red())
-            await ctx.send(embed=embed)
-    else:
-        embed=discord.Embed(title="No game going on", description="Start a new one using the 'tictactoe challenge' command.", color=discord.Color.red())
-        await ctx.send(embed=embed)
-
-
-def checkWinner(winningConditions, mark):
-    global gameOver
-    for condition in winningConditions:
-        if board[condition[0]] == mark and board[condition[1]] == mark and board[condition[2]] == mark:
-            gameOver = True
 
 
 @tictactoe.command()
 async def help(ctx):
-    embed=discord.Embed(title="Tic Tac Toe", description="Tic Tac Toe, pretty self explanatory." + "\n" + "Using the command '-tictactoe' followed by mentioning 2 users (e.g. -tictactoe <@" + str(743819073917550682) + "> <@" + str(797239482830159912) + ">) will start a game of Tic Tac Toe with those two players." + "\n" + "Use '-place' followed by a place number to place an :regional_indicator_x: or :o2: in that corresponding box." + "\n" + "A board of the key to the place numbers will be printed at the beginning of each game, as well to the right.\nYou can use '-place quit' to exit a game.", color=discord.Color.blue())
-    embed.add_field(name="Tic Tac Toe Correspondence", value=":one: :two: :three: | :white_large_square: :white_large_square: :white_large_square:" + "\n" ":four: :five: :six: | :white_large_square: :white_large_square: :white_large_square:" + "\n" + ":seven: :eight: :nine: | :white_large_square: :white_large_square: :white_large_square:" + "\n")
+    embed=discord.Embed(title="Tic Tac Toe", description="Tic Tac Toe, pretty self explanatory." + "\n" + "Using the command '-tictactoe @Person' to duel them (e.g. -tictactoe <@" + str(797239482830159912) + ">) will start a game of Tic Tac Toe with me :D (it actually won't)." + "\n" + "To play, just click on a gray tile to place your marker there.", color=discord.Color.blue())
     await ctx.send(embed=embed)
 
-@rps.command()
-async def help(ctx):
-    embed=discord.Embed(title="Rock Paper Scissors", description="RPS stands for Rock Paper Scissors, a commonly known game." + "\n" + "Using the command '-rps', the bot will countdown 'Rock', 'Paper', 'Scissors', and 'Shoot!'." + "\n" + "When it says shoot, you job is to type rock, paper, or scissors, and the bot will also generate one of them, and see who is the winner." + "\n" + "This was the first game project which is why it's lame good day", color=discord.Color.blue())
-    await ctx.send(embed=embed)
 
 
 
@@ -1266,7 +1090,7 @@ async def tictactoe_error(ctx, error):
     elif isinstance(error, commands.CommandOnCooldown):
         embed = discord.Embed(title='**Still on cooldown,** stop trying so hard. Try again in {:.2f}s'.format(error.retry_after), color=discord.Color.red())
         await ctx.send(embed=embed)
-
+'''
 @place.error
 async def place_error(ctx, error):
     if isinstance(error, commands.MissingRequiredArgument):
@@ -1275,6 +1099,7 @@ async def place_error(ctx, error):
     elif isinstance(error, commands.BadArgument):
         embed = discord.Embed(title="Enter a number lol did you pass 2nd grade", colour=discord.Colour.dark_red())
         await ctx.send(embed=embed)
+'''
 
 @bot.event
 async def on_error(event, *args):
@@ -1289,7 +1114,7 @@ async def on_error(event, *args):
 #                       Run Bot                                      #
 ######################################################################
 
-extensions = ['cogs.MessageCommands', 'cogs.MemberRoleCommands', 'cogs.FunCommands', 'cogs.MessageType', 'cogs.WeatherCommand', 'cogs.DuelCommands', 'cogs.Minecraft', 'cogs.AgainstBotCommands']
+extensions = ['cogs.MessageCommands', 'cogs.MemberRoleCommands', 'cogs.FunCommands', 'cogs.MessageType', 'cogs.WeatherCommand', 'cogs.DuelCommands', 'cogs.MinecraftBUTTONS', 'cogs.AgainstBotCommands']
 
 if __name__ == '__main__':
     for ext in extensions:

@@ -6,16 +6,14 @@ import asyncio
 from secrets import randbelow
 import pymongo
 from pymongo import MongoClient
+import os
+
+mongo_cluster = os.getenv('mongo_cluster')
+
 
 player1 = ""
 player2 = ""
 gameOver = True
-
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-mongo_cluster = os.getenv('mongo_cluster')
 
 cluster = MongoClient(mongo_cluster)
 db = cluster["AwesomeguyTwoPointO"]
@@ -131,6 +129,87 @@ def giveHeal(id, healInput):
 class DuelCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+    
+    
+    @commands.command()
+    async def buy(self, ctx, *, weapon):
+        global line
+        shopStuff = ["Nerf Gun", "Log", "Healing Potion", "Bazooka", "Fork"]
+        shopStuffLower = ["nerf gun", "log", "healing potion", "bazooka", "fork"]
+        shopStuffCost = [100, 60, 75, 200, 75]
+        convertedId = str(ctx.author.id)
+        collection = db["rank"]
+        if weapon in shopStuffLower:
+            itemIndex = shopStuffLower.index(weapon)
+            print(itemIndex)
+            user_xp = None
+            member_stats = collection.find({"_id": ctx.author.id})
+            for stat in member_stats:
+                user_xp = stat["xp"]
+                
+            
+            if user_xp == None:
+                embed = discord.Embed(title="Please use '-rank' to set up your XP profile before using this.",
+                                    color=discord.Color.purple())
+                await ctx.send(embed=embed)
+            # print(line)
+            global userXP
+            userXP = int(user_xp) 
+
+            print(userXP)
+            if shopStuffCost[itemIndex] <= userXP:  # current xp
+                giveXP(ctx.author.id, -shopStuffCost[itemIndex])
+                if itemIndex == 2:
+                    giveHeal(ctx.author.id, 1)
+                    embed = discord.Embed(
+                        title="You spent " + str(shopStuffCost[itemIndex]) + "XP on a " + shopStuff[itemIndex] + "!",
+                        color=discord.Color.blue())
+                    await ctx.send(embed=embed)
+                else:
+                    embed = discord.Embed(
+                        title="Respond with where you want this weapon to go to. 1 for primary, 2 for secondary.",
+                        color=discord.Color.blue())
+                    await ctx.send(embed=embed)
+
+                    def is_correct(m):
+                        return m.author == ctx.author and m.content.isdigit()
+
+                    msg = await self.bot.wait_for('message', check=is_correct, timeout=30)
+                    attempt = int(msg.content)
+
+                    if attempt == 1:
+                        giveWeapon(ctx.author.id, weapon)
+                        embed = discord.Embed(
+                            title="You spent " + str(shopStuffCost[itemIndex]) + "XP on a " + shopStuff[itemIndex] + "!",
+                            color=discord.Color.blue())
+                        await ctx.send(embed=embed)
+                        # await ctx.send("Gave '" + weapon + "'!")
+                    elif attempt == 2:
+                        giveWeapon2(ctx.author.id, weapon)
+                        embed = discord.Embed(
+                            title="You spent " + str(shopStuffCost[itemIndex]) + "XP on a " + shopStuff[itemIndex] + "!",
+                            color=discord.Color.blue())
+                        await ctx.send(embed=embed)
+            else:
+                embed = discord.Embed(title="You don't have enough xp to purchase this", color=discord.Color.red())
+                await ctx.send(embed=embed)
+
+        else:
+            embed = discord.Embed(title="That's not a purchasable weapon", color=discord.Color.red())
+            await ctx.send(embed=embed)
+
+    @buy.error
+    async def buy_error(ctx, error):
+        print(error)
+        if isinstance(error, commands.MissingRequiredArgument):
+            embed = discord.Embed(
+                title="You must specify an item to buy. You can find the list of items to buy using '-shop'.",
+                color=discord.Color.purple())
+            await ctx.send(embed=embed)
+        if isinstance(error, commands.CommandInvokeError):
+            embed = discord.Embed(title="Please use '-shop' to set up your inventory and see available items to purchase.",
+                                color=discord.Color.purple())
+            await ctx.send(embed=embed)
     
     @commands.command()
     async def shop(self, ctx, member: discord.Member = None):
@@ -310,10 +389,10 @@ class DuelCommands(commands.Cog):
             await ctx.send(embed=embed)
         elif gameOver:
                 requested_person = p2
-                embed=discord.Embed(title="Duel Challenge", description=str(player1.mention) + "has challenged " + str(player2.mention) + " to duel!\n They have 15 seconds to accept.\nUse -duel accept to accept the challenge!", color=discord.Color.purple())
+                embed=discord.Embed(title="Duel Challenge", description=str(player1.mention) + "has challenged " + str(player2.mention) + " to duel!\n They have 30 seconds to accept.\nUse -duel accept to accept the challenge!", color=discord.Color.purple())
                 await ctx.send(embed=embed)
 
-                await asyncio.sleep(15)
+                await asyncio.sleep(30)
 
                 if gameOver:
                     requested_person = None
@@ -460,7 +539,7 @@ class DuelCommands(commands.Cog):
                                                             player2.id) + ">'s Health: " + str(
                                                             player2Health), color=discord.Color.red())
                                     await ctx.send(embed=embed)
-                            else:
+                            else: 
                                 embed = discord.Embed(
                                     title="You used " + move + " but threw it too close to yourself dealing " + str(
                                         player1Health) + " to yourself lol!",
@@ -955,6 +1034,14 @@ class DuelCommands(commands.Cog):
         else:
             embed = discord.Embed(title="You are not in a duel currently. Use the '-duel' command to start one.", color=discord.Color.blue())
             await ctx.send(embed=embed)
+    @duel.command()
+    async def help(self, ctx):
+        embed=discord.Embed(title="Duels", description="This bot's duels are pretty crappy but I was bored last year ok.", color=discord.Color.purple())
+        embed.add_field(name="Shop Command", value="Now to see what new weapons and healing potions are available, you can use **'-shop'** to open the shop menu. This will display items available for purchase.")
+        embed.add_field(name="Buy Command", value="To buy these items you can do **'-buy {item}'**. Watch out for spelling. For weapons it will ask you for a slot, 1 or 2. Don't make it complicated just enter '1' or '2' for the appropriate slot its not hard.")
+        embed.add_field(name="Inventory Command", value="You can use **'-inv'** or **'-inventory'** to open your current inventory. This will display your current weapons and amount of healing potions.")
+        embed.add_field(name="Duel Command", value="Now to actually duel someone you can do **'-duel @Person'**. They will have to accept, and the game explains itself from there on.")
+        await ctx.send(embed=embed)
     
 
     
