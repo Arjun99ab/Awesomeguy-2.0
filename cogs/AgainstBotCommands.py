@@ -9,7 +9,7 @@ import time
 import os
 
 mongo_cluster = os.getenv('mongo_cluster')
-
+ 
 cluster = MongoClient(mongo_cluster)
 db = cluster["AwesomeguyTwoPointO"]
 
